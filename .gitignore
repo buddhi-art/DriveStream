@@ -1,0 +1,108 @@
+# DriveStream keeps generated output and runtime secrets out of source control.
+# Ignore rules are not a secret scanner and do not untrack existing commits.
+
+# macOS filesystem metadata
+.DS_Store
+._*
+.Spotlight-V100/
+.Trashes/
+.fseventsd/
+
+# XcodeGen output: project.yml is the committed source of truth
+/DriveStream.xcodeproj/
+*.xcworkspace/
+xcuserdata/
+*.xcuserstate
+
+# Xcode/compiler output and diagnostics
+/build/
+/dist/
+DerivedData/
+*.xcarchive/
+*.xcresult/
+*.dSYM/
+*.bcsymbolmap
+*.trace/
+*.dia
+
+# Application bundles, installers, and release archives
+# Publish these as GitHub Release assets, not source files.
+*.app/
+*.dmg
+*.zip
+*.pkg
+*.mpkg/
+*.xip
+
+# Swift Package Manager and optional compiled-tool caches
+.swiftpm/
+.build/
+/target/
+node_modules/
+.pnpm-store/
+
+# Python environments and test/interpreter caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# rclone configurations can contain OAuth tokens, client secrets, and
+# reversibly obscured crypt passwords. Exclude copied configs and backups.
+rclone.conf
+rclone.conf.*
+rclone.conf~
+.rclone.conf*
+
+# Runtime data accidentally copied into the repository root
+# Root anchors avoid hiding legitimate nested source/fixture directories.
+/cache/
+/logs/
+/vfs/
+/vfsMeta/
+/DriveStreamVolumes/
+/Application Support/DriveStream/
+/Library/Application Support/DriveStream/
+pending-writes.json
+
+# Downloaded/extracted official helper copies
+/rclone
+/rclone.exe
+/bin/rclone
+/bin/rclone.exe
+rclone-*-osx-arm64/
+rclone-*-osx-amd64/
+
+# Local environment values and downloaded Google OAuth credential files
+.env
+.env.*
+client_secret*.json
+client-secret*.json
+/credentials.json
+/token.json
+/oauth-token*.json
+
+# Signing/private keys, provisioning data, and Keychain exports
+*.p12
+*.pfx
+*.pem
+*.key
+*.cer
+*.crt
+*.mobileprovision
+*.provisionprofile
+*.keychain
+*.keychain-db
+.ssh/
+
+# Local logs and editor scratch files
+*.log
+*.swp
+*.swo
+*~
+
+# Do NOT broadly ignore *.json, *.md, *.swift, *.plist, *.entitlements,
+# *.icns, images, or package lockfiles: required docs, benchmarks, resources,
+# and test source must remain visible. Review any intentional public fixture
+# matching a sensitive-file rule before adding a narrowly scoped exception.

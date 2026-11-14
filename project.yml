@@ -1,0 +1,115 @@
+name: DriveStream
+options:
+  bundleIdPrefix: com.drivestream
+  createIntermediateGroups: true
+  deploymentTarget:
+    macOS: "14.0"
+  groupSortPosition: top
+  minimumXcodeGenVersion: "2.46.0"
+  xcodeVersion: "26.3"
+
+configs:
+  Debug: debug
+  Release: release
+
+settings:
+  base:
+    ALWAYS_SEARCH_USER_PATHS: NO
+    CLANG_ENABLE_MODULES: YES
+    CODE_SIGN_IDENTITY: "-"
+    CODE_SIGN_STYLE: Manual
+    CURRENT_PROJECT_VERSION: "1"
+    DEAD_CODE_STRIPPING: YES
+    DEVELOPMENT_TEAM: ""
+    ENABLE_APP_SANDBOX: NO
+    ENABLE_HARDENED_RUNTIME: YES
+    ENABLE_USER_SCRIPT_SANDBOXING: NO
+    MARKETING_VERSION: "1.2.1"
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    PROVISIONING_PROFILE_SPECIFIER: ""
+    SWIFT_STRICT_CONCURRENCY: complete
+    SWIFT_VERSION: "6.0"
+    SWIFT_TREAT_WARNINGS_AS_ERRORS: YES
+
+targets:
+  DriveStream:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources
+        excludes:
+          - Info.plist
+          - DriveStream.entitlements
+      - path: Resources
+        buildPhase: resources
+    settings:
+      base:
+        CODE_SIGN_ENTITLEMENTS: Sources/DriveStream.entitlements
+        COMBINE_HIDPI_IMAGES: YES
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: Sources/Info.plist
+        LD_RUNPATH_SEARCH_PATHS:
+          - "$(inherited)"
+          - "@executable_path/../Frameworks"
+        PRODUCT_BUNDLE_IDENTIFIER: com.drivestream.app
+        PRODUCT_NAME: DriveStream
+        SWIFT_EMIT_LOC_STRINGS: YES
+      configs:
+        Debug:
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG
+          SWIFT_OPTIMIZATION_LEVEL: "-Onone"
+        Release:
+          SWIFT_COMPILATION_MODE: wholemodule
+          SWIFT_OPTIMIZATION_LEVEL: "-O"
+    dependencies:
+      - sdk: AppKit.framework
+      - sdk: Combine.framework
+      - sdk: CryptoKit.framework
+      - sdk: Security.framework
+      - sdk: SwiftUI.framework
+      - sdk: Network.framework
+      - sdk: ServiceManagement.framework
+
+  DriveStreamTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Tests
+      - path: Sources/Models
+      - path: Sources/Services
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.drivestream.tests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: ""
+        BUNDLE_LOADER: ""
+        # Hostless core tests must not launch the real app/account configuration.
+        CODE_SIGN_ENTITLEMENTS: ""
+    dependencies:
+      - sdk: XCTest.framework
+      - sdk: AppKit.framework
+      - sdk: Combine.framework
+      - sdk: CryptoKit.framework
+      - sdk: Security.framework
+      - sdk: Network.framework
+      - sdk: ServiceManagement.framework
+
+schemes:
+  DriveStream:
+    build:
+      targets:
+        DriveStream: all
+    run:
+      config: Debug
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release
+    test:
+      config: Debug
+      targets:
+        - name: DriveStreamTests
+          parallelizable: false
+          randomExecutionOrder: true

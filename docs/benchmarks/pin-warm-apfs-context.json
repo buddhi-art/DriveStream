@@ -1,0 +1,35 @@
+{
+  "hardware": "MacBookAir10,1, Apple M1, 8 CPU cores, 8589934592 bytes RAM",
+  "os": "macOS 27.2 (26B123)",
+  "swift": "Apple Swift 6.4.2 (swiftlang-6.4.2.1.9 clang-2100.4.1.1)",
+  "sdk": "/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk",
+  "flags": "-O -parse-as-library -swift-version 6 -strict-concurrency=complete -warnings-as-errors -target arm64-apple-macosx14.0",
+  "models": "Frozen real model copies before compilation; no State shim. The archived baseline/new reader comparison predates unrelated 1.2 model additions.",
+  "fixture_parent": "Private temporary fixture directory; fixture contents are not checked in",
+  "fixture_storage": "Local APFS /System/Volumes/Data, physically written repeating deterministic nonzero bytes (not sparse)",
+  "fixtures": {
+    "small": "2000 x 4096-byte files",
+    "medium": "32 x 8388608-byte files",
+    "large": "1 x 268435456-byte file"
+  },
+  "bias_control": "Each scenario/mode gets an unmeasured prewarm. Five measured repeats per actual scenario/mode, deterministic shuffled method order each repeat (seed 20261106). Fresh process per run. No global cache purge.",
+  "raw_rows": 102,
+  "row_counts": {
+    "unmeasured_warmups": 15,
+    "actual_measured": 75,
+    "synthetic_measured": 12
+  },
+  "metrics": "Elapsed monotonic time around the awaited pin call; process CPU delta from getrusage; process-wide peak ru_maxrss in bytes (macOS); serialized progress callback count",
+  "old_baseline": "Original sequential FileHandle/Data PinEngine source archived before editing; only enum renamed OldPinEngine to coexist in benchmark binary. No autoreleasepool or other performance repairs applied to archived code.",
+  "synthetic": "New implementation only, matched concurrency1/2/3/4 baseline. Requested usleep(10000) before each read including EOF. Utility-QoS timer coalescing/scheduling means actual delay is not exactly 10ms and cannot be treated as network RTT. Three shuffled-order repeats.",
+  "limitations": [
+    "Warm local filesystem only; not real rclone, NFS/FUSE, OAuth, Google Drive, encryption, cold-disk throughput, or 5TB-scale data.",
+    "Short timing cases and normal shared machine activity (including concurrent harness/compiler work) introduce noise; raw ranges retained. Machine not isolated.",
+    "Peak RSS is process-wide, not exclusively buffer memory. Allocator/autorelease effects in the unchanged original baseline contribute to its larger peak.",
+    "Parallelism is not faster for every warm-local case: new1 beats new2 for small-file fixture; new2/3/4 have higher aggregate CPU for medium files.",
+    "This demonstrates cache warming and bounded Swift file-I/O allocation; it cannot prove persistence against rclone eviction or general network speedup.",
+    "Cancellation prevents new work and checks between chunks, then joins/cleans up all workers. An already-blocked kernel read cannot safely/reliably be interrupted by cross-thread close; cancellation may await the filesystem response."
+  ],
+  "source_status": "Measured pin implementation snapshot on 6 November 2026, not a final aggregate 1.2 application validation",
+  "distribution_method": "p95 is a descriptive linear interpolation of sorted values at index (n-1)*0.95; n=5 actual or n=3 synthetic. It is not a reliable population tail estimate."
+}

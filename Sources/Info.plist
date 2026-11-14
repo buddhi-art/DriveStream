@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
+    <key>CFBundleDisplayName</key>
+    <string>DriveStream</string>
+    <key>CFBundleExecutable</key>
+    <string>$(EXECUTABLE_NAME)</string>
+    <key>CFBundleIconFile</key>
+    <string>DriveStream</string>
+    <key>CFBundleIdentifier</key>
+    <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleName</key>
+    <string>$(PRODUCT_NAME)</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>$(MARKETING_VERSION)</string>
+    <key>CFBundleVersion</key>
+    <string>$(CURRENT_PROJECT_VERSION)</string>
+    <key>ITSAppUsesNonExemptEncryption</key>
+    <false/>
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.utilities</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>14.0</string>
+    <key>LSUIElement</key>
+    <true/>
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsLocalNetworking</key>
+        <true/>
+    </dict>
+    <key>NSDesktopFolderUsageDescription</key>
+    <string>DriveStream uses your Desktop folder only to reveal DriveStream volumes when you ask it to.</string>
+    <key>NSDocumentsFolderUsageDescription</key>
+    <string>DriveStream mounts Google Drive inside your home folder. macOS may ask for access when you open mounted files.</string>
+    <key>NSDownloadsFolderUsageDescription</key>
+    <string>DriveStream saves the optional verified macFUSE installer in Downloads when you choose to install it. The rclone helper is kept in private Application Support.</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>NSHumanReadableCopyright</key>
+    <string>Copyright © 2026 DriveStream contributors. Released under the MIT License.</string>
+    <key>NSPrincipalClass</key>
+    <string>NSApplication</string>
+    <key>NSServices</key>
+    <array>
+        <dict>
+            <key>NSMenuItem</key>
+            <dict>
+                <key>default</key>
+                <string>DriveStream: Pin Offline (Keep on Mac)</string>
+            </dict>
+            <key>NSMessage</key>
+            <string>pinOfflineService</string>
+            <key>NSPortName</key>
+            <string>DriveStream</string>
+            <key>NSReturnTypes</key>
+            <array/>
+            <key>NSSendTypes</key>
+            <array>
+                <string>NSFilenamesPboardType</string>
+                <string>public.item</string>
+                <string>public.file-url</string>
+            </array>
+        </dict>
+        <dict>
+            <key>NSMenuItem</key>
+            <dict>
+                <key>default</key>
+                <string>DriveStream: Evict Local Copy (Free Up Mac Space)</string>
+            </dict>
+            <key>NSMessage</key>
+            <string>evictCacheService</string>
+            <key>NSPortName</key>
+            <string>DriveStream</string>
+            <key>NSReturnTypes</key>
+            <array/>
+            <key>NSSendTypes</key>
+            <array>
+                <string>NSFilenamesPboardType</string>
+                <string>public.item</string>
+                <string>public.file-url</string>
+            </array>
+        </dict>
+    </array>
+    <key>NSSupportsAutomaticTermination</key>
+    <false/>
+    <key>NSSupportsSuddenTermination</key>
+    <false/>
+</dict>
+</plist>

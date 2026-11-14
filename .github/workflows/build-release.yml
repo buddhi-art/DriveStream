@@ -1,0 +1,335 @@
+name: Build & Release
+
+on:
+  push:
+    branches:
+      - "**"
+    tags:
+      - "v*"
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: drivestream-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  APP_NAME: DriveStream
+  SCHEME: DriveStream
+  PROJECT_FILE: DriveStream.xcodeproj
+  DEVELOPMENT_TEAM: ""
+  HOMEBREW_NO_AUTO_UPDATE: "1"
+  HOMEBREW_NO_INSTALL_CLEANUP: "1"
+
+jobs:
+  build:
+    name: Build Universal macOS App
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      # Select a stable Swift 6 toolchain explicitly; macos-15's default can lag.
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      build: ${{ steps.version.outputs.build }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Show toolchain
+        run: |
+          uname -m
+          sw_vers
+          xcodebuild -version
+          test -d "${DEVELOPER_DIR}"
+          xcrun swiftc --version
+
+      - name: Install XcodeGen, create-dmg, and actionlint
+        run: |
+          brew install xcodegen create-dmg actionlint
+          xcodegen --version
+          create-dmg --version
+          actionlint .github/workflows/build-release.yml
+
+      - name: Resolve marketing and build versions
+        id: version
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" == "tag" && "${GITHUB_REF_NAME}" == v* ]]; then
+            if [[ "${GITHUB_REF_NAME}" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)(-[0-9A-Za-z.-]+)?$ ]]; then
+              VERSION="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.${BASH_REMATCH[3]}"
+              PRERELEASE=false
+              [[ -z "${BASH_REMATCH[4]}" ]] || PRERELEASE=true
+            else
+              echo "::error::Release tags must use vMAJOR.MINOR.PATCH with an optional prerelease suffix."
+              exit 1
+            fi
+          else
+            VERSION="1.2.1"
+            PRERELEASE=false
+          fi
+          BUILD_NUMBER="${GITHUB_RUN_NUMBER}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "build=${BUILD_NUMBER}" >> "$GITHUB_OUTPUT"
+          echo "prerelease=${PRERELEASE}" >> "$GITHUB_OUTPUT"
+          echo "Building DriveStream ${VERSION} (${BUILD_NUMBER})"
+
+      - name: Generate Xcode project
+        run: |
+          xattr -cr Sources Resources 2>/dev/null || true
+          xcodegen generate --spec project.yml
+          xcodebuild -project "${PROJECT_FILE}" -list
+
+      - name: Lint plists and entitlements
+        run: |
+          plutil -lint Sources/Info.plist
+          plutil -lint Sources/DriveStream.entitlements
+          /usr/libexec/PlistBuddy -c "Print :NSServices:0:NSMessage" Sources/Info.plist
+          /usr/libexec/PlistBuddy -c "Print :NSServices:1:NSMessage" Sources/Info.plist
+
+      - name: Verify required files and runtime guardrails
+        run: bash ./Scripts/verify-required-files.sh
+
+      - name: Run model smoke tests
+        run: bash ./Scripts/run-model-tests.sh
+
+      - name: Run rclone RC integration tests
+        run: bash ./Scripts/run-rc-integration-tests.sh
+
+      - name: Run service safety and lifecycle tests
+        run: |
+          bash ./Scripts/run-service-tests.sh
+          bash ./Scripts/run-lifecycle-tests.sh
+          bash ./Scripts/run-review-regressions.sh
+
+      - name: Run credential and pin-engine regressions
+        run: |
+          bash ./Scripts/run-security-tests.sh
+          bash ./Scripts/run-pin-tests.sh
+          bash ./Scripts/run-recovery-tests.sh
+
+      - name: Regress idle safety, Finder metadata, lifecycle and Keychain queries
+        run: |
+          bash ./Scripts/run-upload-safety-tests.sh
+          bash ./Scripts/run-monitor-keychain-tests.sh
+          bash ./Scripts/run-telemetry-tests.sh
+
+      - name: Run hostless native unit tests
+        run: |
+          xcodebuild -project "${PROJECT_FILE}" -scheme "${SCHEME}" \
+            -configuration Debug -destination 'platform=macOS' -derivedDataPath build \
+            CODE_SIGN_IDENTITY="-" CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM="" \
+            SWIFT_VERSION=6.0 SWIFT_STRICT_CONCURRENCY=complete \
+            SWIFT_TREAT_WARNINGS_AS_ERRORS=YES test
+
+      - name: Check RC concurrency with Thread Sanitizer
+        run: RC_TEST_TSAN=1 bash ./Scripts/run-rc-integration-tests.sh
+
+      - name: Compile universal Release build
+        shell: bash
+        env:
+          MARKETING_VERSION: ${{ steps.version.outputs.version }}
+          BUILD_NUMBER: ${{ steps.version.outputs.build }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          COMMON_ARGS=(
+            -project "${PROJECT_FILE}"
+            -scheme "${SCHEME}"
+            -configuration Release
+            -destination "generic/platform=macOS"
+            -derivedDataPath build
+            "ARCHS=arm64 x86_64"
+            ONLY_ACTIVE_ARCH=NO
+            SWIFT_VERSION=6.0
+            SWIFT_STRICT_CONCURRENCY=complete
+            SWIFT_TREAT_WARNINGS_AS_ERRORS=YES
+            "MARKETING_VERSION=${MARKETING_VERSION}"
+            "CURRENT_PROJECT_VERSION=${BUILD_NUMBER}"
+            "CODE_SIGN_STYLE=Manual"
+            "DEVELOPMENT_TEAM="
+            "PROVISIONING_PROFILE_SPECIFIER="
+            ENABLE_HARDENED_RUNTIME=YES
+            ENABLE_APP_SANDBOX=NO
+          )
+
+          if xcodebuild "${COMMON_ARGS[@]}" \
+              "CODE_SIGN_IDENTITY=-" \
+              CODE_SIGNING_REQUIRED=YES \
+              CODE_SIGNING_ALLOWED=YES \
+              build 2>&1 | tee dist/xcodebuild.log; then
+            echo "Ad-hoc signed Xcode build succeeded."
+          else
+            echo "::warning::Xcode's ad-hoc signing step failed; rebuilding unsigned and applying the documented deep ad-hoc signature explicitly."
+            xcodebuild "${COMMON_ARGS[@]}" \
+              CODE_SIGNING_REQUIRED=NO \
+              CODE_SIGNING_ALLOWED=NO \
+              build 2>&1 | tee -a dist/xcodebuild.log
+          fi
+
+      - name: Verify Universal (arm64 + x86_64) binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP="build/Build/Products/Release/${APP_NAME}.app"
+          BINARY="${APP}/Contents/MacOS/${APP_NAME}"
+          test -d "${APP}"
+          test -x "${BINARY}"
+          file "${BINARY}"
+          ARCHS="$(lipo -archs "${BINARY}")"
+          echo "Architectures: ${ARCHS}"
+          [[ "${ARCHS}" == *arm64* ]] || { echo "::error::Missing Apple Silicon arm64 slice"; exit 1; }
+          [[ "${ARCHS}" == *x86_64* ]] || { echo "::error::Missing Intel x86_64 slice"; exit 1; }
+          /usr/libexec/PlistBuddy -c "Print :LSMinimumSystemVersion" "${APP}/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c "Print :LSUIElement" "${APP}/Contents/Info.plist"
+          [[ "$(/usr/libexec/PlistBuddy -c 'Print :NSServices:0:NSMessage' "${APP}/Contents/Info.plist")" == "pinOfflineService" ]]
+          [[ "$(/usr/libexec/PlistBuddy -c 'Print :NSServices:1:NSMessage' "${APP}/Contents/Info.plist")" == "evictCacheService" ]]
+          lipo -thin arm64 "${BINARY}" -output "${RUNNER_TEMP}/DriveStream-arm64"
+          file "${RUNNER_TEMP}/DriveStream-arm64"
+
+      - name: Deep ad-hoc codesign
+        run: |
+          set -euo pipefail
+          APP="build/Build/Products/Release/${APP_NAME}.app"
+          xattr -cr "${APP}" || true
+          codesign --force --deep --sign - --options runtime \
+            --entitlements Sources/DriveStream.entitlements \
+            "${APP}"
+          codesign --verify --deep --strict --verbose=2 "${APP}"
+          codesign -d --verbose=4 "${APP}" 2>&1 | tee dist/codesign.txt
+          codesign -d --entitlements :- "${APP}" 2>&1 | tee dist/entitlements.txt
+
+      - name: Package ZIP and DMG
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP="build/Build/Products/Release/${APP_NAME}.app"
+          DIST="dist"
+          rm -rf "${DIST}/dmg-root"
+          mkdir -p "${DIST}/dmg-root"
+          cp -R "${APP}" "${DIST}/dmg-root/"
+
+          ditto -c -k --sequesterRsrc --keepParent "${APP}" "${DIST}/${APP_NAME}-macOS.zip"
+
+          set +e
+          create-dmg \
+            --volname "${APP_NAME}" \
+            --volicon "Resources/${APP_NAME}.icns" \
+            --window-pos 200 120 \
+            --window-size 640 400 \
+            --icon-size 128 \
+            --icon "${APP_NAME}.app" 160 190 \
+            --hide-extension "${APP_NAME}.app" \
+            --app-drop-link 470 190 \
+            --skip-jenkins \
+            --no-internet-enable \
+            "${DIST}/${APP_NAME}.dmg" \
+            "${DIST}/dmg-root" 2>&1 | tee "${DIST}/create-dmg.log"
+          CREATE_STATUS=${PIPESTATUS[0]}
+          set -e
+
+          if [[ ${CREATE_STATUS} -ne 0 || ! -s "${DIST}/${APP_NAME}.dmg" ]]; then
+            echo "::warning::create-dmg could not finish; falling back to hdiutil."
+            rm -f "${DIST:?}/${APP_NAME:?}.dmg"
+            ln -s /Applications "${DIST:?}/dmg-root/Applications"
+            hdiutil create \
+              -volname "${APP_NAME}" \
+              -srcfolder "${DIST}/dmg-root" \
+              -ov \
+              -format UDZO \
+              "${DIST}/${APP_NAME}.dmg"
+          fi
+
+          (cd "${DIST}" && shasum -a 256 "${APP_NAME}-macOS.zip" "${APP_NAME}.dmg" > SHA256SUMS.txt)
+          ls -lah "${DIST}"
+
+      - name: Validate release artifacts
+        run: |
+          set -euo pipefail
+          unzip -t dist/DriveStream-macOS.zip
+          hdiutil verify dist/DriveStream.dmg
+          cat dist/SHA256SUMS.txt
+
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: DriveStream-macOS
+          path: |
+            dist/DriveStream-macOS.zip
+            dist/DriveStream.dmg
+            dist/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+      - name: Write build summary
+        run: |
+          {
+            echo "## DriveStream build"
+            echo ""
+            echo "| Item | Value |"
+            echo "| --- | --- |"
+            echo "| Version | ${{ steps.version.outputs.version }} |"
+            echo "| Architectures | $(lipo -archs build/Build/Products/Release/DriveStream.app/Contents/MacOS/DriveStream) |"
+            echo "| Minimum macOS | $(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' build/Build/Products/Release/DriveStream.app/Contents/Info.plist) |"
+            echo "| Swift | 6 language mode · complete strict concurrency · warnings as errors |"
+            echo "| Xcode | 26.3 (explicit stable toolchain) |"
+            echo "| Signing | Ad-hoc · Hardened Runtime (not notarized) |"
+            echo "| Artifacts | DriveStream-macOS.zip, DriveStream.dmg, SHA256SUMS.txt |"
+            echo ""
+            echo "Apple Silicon M1 and newer are fully supported; the app also contains an Intel slice."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  release:
+    name: Publish GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download packaged artifacts
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: DriveStream-macOS
+          path: release
+
+      - name: Publish release
+        uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
+        with:
+          name: DriveStream ${{ needs.build.outputs.version }}
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true
+          prerelease: ${{ needs.build.outputs.prerelease == 'true' }}
+          make_latest: ${{ needs.build.outputs.prerelease != 'true' }}
+          fail_on_unmatched_files: true
+          files: |
+            release/DriveStream-macOS.zip
+            release/DriveStream.dmg
+            release/SHA256SUMS.txt
+          body: |
+            ## DriveStream ${{ needs.build.outputs.version }}
+
+            A native, menu-bar macOS volume for Google Drive built with SwiftUI, AppKit, and an automatically managed official rclone binary.
+
+            ### Install
+            1. Download `DriveStream.dmg`.
+            2. Drag **DriveStream.app** into **Applications**.
+            3. This build is ad-hoc signed and not notarized. On first launch, right-click the app and choose **Open**, or clear the quarantine flag:
+
+               ```bash
+               xattr -cr /Applications/DriveStream.app
+               ```
+
+            4. Follow the setup assistant, connect Google Drive, and mount the volume.
+
+            **Requires macOS 14 or later.** Apple Silicon (M1 and newer) is fully supported; the binary is Universal and also includes an x86_64 slice.
+
+            SHA-256 checksums are attached as `SHA256SUMS.txt`.
