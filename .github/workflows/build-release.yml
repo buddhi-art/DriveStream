@@ -76,9 +76,11 @@ jobs:
             PRERELEASE=false
           fi
           BUILD_NUMBER="${GITHUB_RUN_NUMBER}"
-          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "build=${BUILD_NUMBER}" >> "$GITHUB_OUTPUT"
-          echo "prerelease=${PRERELEASE}" >> "$GITHUB_OUTPUT"
+          {
+            echo "version=${VERSION}"
+            echo "build=${BUILD_NUMBER}"
+            echo "prerelease=${PRERELEASE}"
+          } >> "$GITHUB_OUTPUT"
           echo "Building DriveStream ${VERSION} (${BUILD_NUMBER})"
 
       - name: Generate Xcode project
